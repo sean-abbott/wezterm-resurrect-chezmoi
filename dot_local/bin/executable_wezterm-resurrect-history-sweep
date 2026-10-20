@@ -1,0 +1,32 @@
+#!/bin/sh
+# Merges and cleans up per-pane fish history files whose owning shell is no
+# longer running. Safe to call repeatedly (periodic tick) and right after a
+# reboot (gui-startup) -- the same liveness check (kill -0 on the recorded
+# pid) is correct in both cases: while wezterm is still running it only
+# catches genuinely-dead shells, and right after a reboot every recorded pid
+# is necessarily from before this boot, so every lock is orphaned.
+set -eu
+
+lock_dir="$HOME/.local/state/wezterm-resurrect/history-locks"
+fish_data_dir="$HOME/.local/share/fish"
+main_history="$fish_data_dir/fish_history"
+
+[ -d "$lock_dir" ] || exit 0
+
+for lock_file in "$lock_dir"/*.pid; do
+  [ -e "$lock_file" ] || continue
+
+  key=$(basename "$lock_file" .pid)
+  pid=$(cat "$lock_file" 2>/dev/null || echo "")
+
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+    continue
+  fi
+
+  history_file="$fish_data_dir/${key}_history"
+  if [ -f "$history_file" ]; then
+    cat "$history_file" >> "$main_history"
+    rm -f "$history_file"
+  fi
+  rm -f "$lock_file"
+done

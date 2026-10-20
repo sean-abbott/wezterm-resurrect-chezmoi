@@ -1,0 +1,21 @@
+#!/bin/sh
+# Best-effort final checkpoint, invoked as the ExecStop of
+# wezterm-resurrect-final-save.service during shutdown. Pokes any live
+# WezTerm pane's WEZTERM_RESURRECT_SAVE user var, which conf/resurrect.lua's
+# user-var-changed handler turns into a save. Not guaranteed to run before
+# WezTerm itself is torn down by graphical-session teardown -- this is a
+# bonus layer on top of the periodic timer, not a replacement for it.
+set -u
+
+pane_id=$(timeout 5 wezterm cli list --format json 2>/dev/null \
+  | python3 -c 'import json, sys
+try:
+    panes = json.load(sys.stdin)
+    print(panes[0]["pane_id"])
+except Exception:
+    pass' 2>/dev/null)
+
+if [ -n "${pane_id:-}" ]; then
+  timeout 5 wezterm cli set-user-var WEZTERM_RESURRECT_SAVE 1 --pane-id "$pane_id" >/dev/null 2>&1 || true
+  sleep 1
+fi

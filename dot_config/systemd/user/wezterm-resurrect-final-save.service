@@ -1,0 +1,14 @@
+[Unit]
+Description=Best-effort final wezterm-resurrect checkpoint before shutdown
+DefaultDependencies=no
+Before=shutdown.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/true
+ExecStop=%h/.local/bin/wezterm-resurrect-final-save
+
+[Install]
+WantedBy=default.target
