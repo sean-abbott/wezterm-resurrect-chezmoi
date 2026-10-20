@@ -101,7 +101,7 @@ systemctl --user daemon-reload
 systemctl --user enable --now wezterm-resurrect-final-save.service
 ```
 
-## Limitations, stated plainly
+## Limitations
 
 - WezTerm has no Lua shutdown/SIGTERM hook. A `reboot` never gets a final
   clean save — recovery quality depends on how recent the last periodic
@@ -142,9 +142,13 @@ systemctl --user enable --now wezterm-resurrect-final-save.service
 
 ## Install
 
-Clone as its own chezmoi source directory (see the note on running multiple
-chezmoi profiles in `zen-updater-chezmoi`'s README — the same pattern
-applies here):
+Needs `chezmoi` itself on `PATH` first — see Requirements above.
+
+Clone as its own chezmoi source directory, independent of any other
+chezmoi setup you might have. chezmoi doesn't require one source directory
+per machine; you can run several independently, each with its own
+`--source`, as long as they don't manage overlapping target paths (this
+repo only touches the paths listed under Uninstall below):
 
 ```
 git clone <this-repo-url> ~/.local/share/chezmoi-wezterm
@@ -152,6 +156,10 @@ chezmoi init --source ~/.local/share/chezmoi-wezterm
 chezmoi diff --source ~/.local/share/chezmoi-wezterm
 chezmoi apply --source ~/.local/share/chezmoi-wezterm
 ```
+
+If you're running more than one chezmoi profile this way, a small wrapper
+(shell function, alias, whatever you use) that calls `chezmoi apply
+--source <dir>` for each in turn is the standard way to apply them all.
 
 This is the one piece chezmoi can't safely automate: `wezterm.lua` is a
 single file you've almost certainly already customized, so this repo
@@ -176,20 +184,12 @@ persistence logic itself land via `chezmoi apply` re-rendering
 ## Uninstall
 
 ```
-systemctl --user disable --now wezterm-resurrect-final-save.service
-rm ~/.config/systemd/user/wezterm-resurrect-final-save.service
-rm ~/.local/bin/wezterm-resurrect-final-save
-rm ~/.local/bin/wezterm-resurrect-history-sweep
-rm -rf ~/.config/wezterm/conf/resurrect.lua
-rm ~/.config/fish/conf.d/wezterm-resurrect.fish
-rm ~/.config/fish/conf.d/wezterm-resurrect-history.fish
-rm -rf ~/.local/state/wezterm-resurrect
-rm -rf ~/.local/share/chezmoi-wezterm
+./uninstall.sh
 ```
 
-Any leftover per-pane history files from before uninstalling
-(`~/.local/share/fish/wezterm_*_history`, `~/.local/share/fish/zellij_*_history`)
-are safe to merge by hand (`cat` them into `~/.local/share/fish/fish_history`)
-or just delete if you don't need that recall.
-
-Then remove the two lines from your `wezterm.lua`.
+run from wherever you cloned this repo. It stops and removes the systemd
+units, deletes everything it installed under `~/.config` and
+`~/.local/bin`, and tells you what's left to do by hand (removing the two
+lines from `wezterm.lua`, and dealing with any leftover per-pane history
+files). It doesn't delete the chezmoi source directory itself or the clone
+— `rm -rf` those yourself if you're done with this entirely.
