@@ -54,6 +54,15 @@ if status is-interactive
                 rm -f "$my_history"
             end
             rm -f "$__wezterm_resurrect_lock_file"
+            # A pane that's deliberately closing has no restore coming for
+            # it specifically, so its saved custom env vars (see
+            # conf.d/wezterm-resurrect.fish) are equally stale -- clean up
+            # alongside history rather than leaking indefinitely. Only
+            # applies to the wezterm branch; zellij panes never get an
+            # env file in the first place.
+            if set -q WEZTERM_RESURRECT_HISTORY_ID
+                rm -f "$HOME/.local/state/wezterm-resurrect/env/$WEZTERM_RESURRECT_HISTORY_ID.env"
+            end
         end
     end
 end

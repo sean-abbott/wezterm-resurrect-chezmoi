@@ -19,11 +19,12 @@ repo's glue code is short enough to read in one sitting — see
   save. State lives in `~/.local/state/wezterm-resurrect` (created 0700;
   the library does not secure permissions itself).
 - **`dot_config/fish/conf.d/wezterm-resurrect.fish`** triggers an extra
-  checkpoint on every `cd`, for saves fresher than the periodic timer alone.
-  It's guarded on `status is-interactive` and `set -q WEZTERM_PANE`, so it's
-  a complete no-op in any shell that isn't an interactive WezTerm pane —
-  safe to drop into any fish config via `conf.d`, which fish auto-sources
-  without you editing `config.fish` or any existing function.
+  checkpoint on every `cd`, for saves fresher than the periodic timer alone;
+  also stamps the pane's real cwd and persists custom env vars (see below
+  for both). Guarded on `status is-interactive` and `set -q WEZTERM_PANE`,
+  so it's a complete no-op in any shell that isn't an interactive WezTerm
+  pane — safe to drop into any fish config via `conf.d`, which fish
+  auto-sources without you editing `config.fish` or any existing function.
 
 ## Isolated per-pane fish history
 
@@ -77,6 +78,54 @@ silently falls back to the default history session on an invalid name
 rather than erroring), so every generated id and sanitized zellij session
 name has hyphens stripped/replaced before being used as the `fish_history`
 value.
+
+## cwd restore for alt-screen apps, and tab titles
+
+Two related gaps, both from the same root cause: WezTerm's own capture
+relies on process introspection to get a pane's cwd, and its own
+`tab:get_title()` only reflects a title explicitly set through its Lua
+API — neither sees anything the shell itself displays via OSC sequences.
+In practice this meant panes running an alt-screen foreground app (Claude
+Code's TUI is the one that surfaced it) restored to a default directory
+instead of wherever they actually started, and tab titles came back
+blank regardless of what was shown before.
+
+Fish always knows its own `$PWD` and whatever `fish_title` currently
+computes, foreground app or not, so both get tracked the same way as the
+history id: stamped continuously as wezterm user vars (cwd on every `cd`
+plus once at shell start, title on every prompt), read back by
+`on_pane_capture`, and injected into the respawned shell's environment by
+`spawn_pane` — which a corresponding bit in `fish-chezmoi`'s `config.fish`
+picks up before the first prompt renders, so the restored title doesn't
+get blanked back to the default a moment later.
+
+## Custom env vars
+
+A pane's own `set -x`'d env vars (not the whole environment — see below
+for what's excluded and why) survive a restore the same way history/cwd/
+title do. `conf.d/wezterm-resurrect.fish` diffs the current environment
+against a baseline captured once at this session's own startup (in
+`fish-chezmoi`'s `config.fish`, right after ssh-agent and everything else
+conf.d sets up — so none of that counts as "custom"), on every prompt,
+and writes whatever's left over to a per-pane file
+(`~/.local/state/wezterm-resurrect/env/<history_id>.env`, exportenv's own
+format) keyed by the same history id used for per-pane history. A short
+excludelist (`PWD`, `OLDPWD`, `SHLVL`, etc.) catches vars that naturally
+change during normal use regardless of baseline.
+
+This file lives independently of the JSON session snapshot — a restored
+pane's `config.fish` reloads it via `exportenv` directly from disk before
+taking its own baseline, so only genuinely new exports made after that
+count toward the next save. Cleaned up the same way as history: on normal
+pane close (`fish_exit`), and by the periodic/post-reboot sweep for panes
+that didn't exit cleanly.
+
+Verified end to end: captured a custom export in one simulated pane,
+confirmed the written file contained only that var (not `PWD`,
+`SSH_AUTH_SOCK`, or any of our own `WEZTERM_RESURRECT_*` vars), confirmed
+a second simulated pane inheriting the same history id via env correctly
+reloaded it, and confirmed a pane with nothing custom set writes no file
+at all.
 
 ## Best-effort save on shutdown/reboot
 

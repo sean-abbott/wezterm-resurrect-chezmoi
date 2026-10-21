@@ -10,6 +10,7 @@ set -eu
 lock_dir="$HOME/.local/state/wezterm-resurrect/history-locks"
 fish_data_dir="$HOME/.local/share/fish"
 main_history="$fish_data_dir/fish_history"
+env_dir="$HOME/.local/state/wezterm-resurrect/env"
 
 [ -d "$lock_dir" ] || exit 0
 
@@ -28,5 +29,13 @@ for lock_file in "$lock_dir"/*.pid; do
     cat "$history_file" >> "$main_history"
     rm -f "$history_file"
   fi
+
+  # Env files are named by the raw history id, with no "wezterm_"/"zellij_"
+  # prefix (zellij-keyed panes never get one at all).
+  history_id="${key#wezterm_}"
+  if [ "$history_id" != "$key" ]; then
+    rm -f "$env_dir/$history_id.env"
+  fi
+
   rm -f "$lock_file"
 done
