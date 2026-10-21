@@ -145,21 +145,25 @@ systemctl --user enable --now wezterm-resurrect-final-save.service
 Needs `chezmoi` itself on `PATH` first — see Requirements above.
 
 Clone as its own chezmoi source directory, independent of any other
-chezmoi setup you might have. chezmoi doesn't require one source directory
-per machine; you can run several independently, each with its own
-`--source`, as long as they don't manage overlapping target paths (this
-repo only touches the paths listed under Uninstall below):
+chezmoi setup you might have:
 
 ```
 git clone <this-repo-url> ~/.local/share/chezmoi-wezterm
 chezmoi init --source ~/.local/share/chezmoi-wezterm
-chezmoi diff --source ~/.local/share/chezmoi-wezterm
-chezmoi apply --source ~/.local/share/chezmoi-wezterm
+chezmoi diff --source ~/.local/share/chezmoi-wezterm --persistent-state ~/.local/state/chezmoi-profiles/wezterm.boltdb
+chezmoi apply --source ~/.local/share/chezmoi-wezterm --persistent-state ~/.local/state/chezmoi-profiles/wezterm.boltdb
 ```
 
-If you're running more than one chezmoi profile this way, a small wrapper
-(shell function, alias, whatever you use) that calls `chezmoi apply
---source <dir>` for each in turn is the standard way to apply them all.
+**Always pass `--persistent-state`.** chezmoi supports running several
+independent `--source` profiles on one machine, but they share one global
+state database by default regardless — and since this repo, `fish-chezmoi`,
+and `zen-updater-chezmoi` all separately manage `~/.local/bin`, without
+this flag whichever profile applies second sees that shared directory as
+"changed since chezmoi last wrote it" and refuses to touch it. Confirmed
+by hitting this for real and fixing it. If you're running more than one
+chezmoi profile this way, a small wrapper (shell function, alias, whatever
+you use) that calls `chezmoi apply --source <dir> --persistent-state <its
+own state file>` for each in turn is the standard way to apply them all.
 
 This is the one piece chezmoi can't safely automate: `wezterm.lua` is a
 single file you've almost certainly already customized, so this repo
