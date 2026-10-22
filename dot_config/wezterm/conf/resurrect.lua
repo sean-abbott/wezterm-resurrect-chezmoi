@@ -20,6 +20,16 @@ local CWD_SAVE_USER_VAR = "WEZTERM_RESURRECT_SAVE"
 local HISTORY_ID_USER_VAR = "WEZTERM_RESURRECT_HISTORY_ID"
 local CWD_USER_VAR = "WEZTERM_RESURRECT_CWD"
 local TITLE_USER_VAR = "WEZTERM_RESURRECT_TITLE"
+-- Any user var with this prefix is carried through capture/restore as an
+-- environment variable of the respawned shell, for integrations that want to
+-- hand a small value (an id, a label) to the next session. Control characters
+-- are stripped and the length capped; consumers must still validate the value.
+local EXTRA_VAR_PREFIX = "WEZTERM_RESURRECT_X_"
+local EXTRA_VAR_MAX_LEN = 512
+-- One-line text shown in a restored pane in place of the library's generic
+-- "a full-screen program was running here" message, for panes that were in
+-- alt-screen mode (the library saves no scrollback for those).
+local NOTICE_VAR = EXTRA_VAR_PREFIX .. "NOTICE"
 
 local function is_local_dir(path)
 	local f = path and io.open(path .. "/.", "r")
@@ -52,6 +62,24 @@ local function on_pane_capture(pane, leaf)
 	if title and title ~= "" then
 		leaf.saved_title = title
 	end
+	for name, value in pairs(user_vars or {}) do
+		if name:sub(1, #EXTRA_VAR_PREFIX) == EXTRA_VAR_PREFIX and type(value) == "string" then
+			local clean = (value:gsub("%c", "")):sub(1, EXTRA_VAR_MAX_LEN)
+			if clean ~= "" then
+				leaf.saved_extra = leaf.saved_extra or {}
+				leaf.saved_extra[name] = clean
+			end
+		end
+	end
+end
+
+local function on_pane_restore(leaf)
+	local notice = leaf.saved_extra and leaf.saved_extra[NOTICE_VAR]
+	if notice and leaf.pane and not leaf.restore_notice then
+		leaf.pane:inject_output("[" .. resurrect.tab_state.sanitize_notice(notice) .. "]\r\n")
+		return
+	end
+	return resurrect.tab_state.default_on_pane_restore(leaf)
 end
 
 local function spawn_pane(leaf, opts)
@@ -63,6 +91,10 @@ local function spawn_pane(leaf, opts)
 	if leaf.saved_title then
 		cmd.set_environment_variables = cmd.set_environment_variables or {}
 		cmd.set_environment_variables[TITLE_USER_VAR] = leaf.saved_title
+	end
+	for name, value in pairs(leaf.saved_extra or {}) do
+		cmd.set_environment_variables = cmd.set_environment_variables or {}
+		cmd.set_environment_variables[name] = value
 	end
 	if leaf.saved_cwd and is_local_dir(leaf.saved_cwd) then
 		cmd.cwd = leaf.saved_cwd
@@ -110,7 +142,7 @@ return function(config)
 	wezterm.on("gui-startup", function(_cmd)
 		local state, warn_or_err = manager.load_session()
 		if state then
-			local _, restore_err = resurrect.session_state.restore(state, { spawn_pane = spawn_pane })
+			local _, restore_err = resurrect.session_state.restore(state, { spawn_pane = spawn_pane, on_pane_restore = on_pane_restore })
 			if restore_err then
 				wezterm.log_warn("resurrect: restore warning: " .. tostring(restore_err))
 			end

@@ -139,6 +139,14 @@ set, otherwise `pane:get_title()`. Anything that can emit
 pane (the fish function above does) controls what a restored pane
 comes back with.
 
+## Extra values for integrations
+
+Any user var whose name starts with `WEZTERM_RESURRECT_X_` is carried through
+capture and restore and set as an environment variable of the respawned shell.
+Control characters are stripped and values are capped at 512 characters, but
+anything can emit these sequences into a pane, so consumers must validate what
+they read. Nothing in this repo reads them.
+
 ## Custom env vars
 
 A pane's own `set -x`'d env vars (not the whole environment — see below
