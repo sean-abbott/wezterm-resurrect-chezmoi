@@ -19,12 +19,22 @@ repo's glue code is short enough to read in one sitting — see
   save. State lives in `~/.local/state/wezterm-resurrect` (created 0700;
   the library does not secure permissions itself).
 - **`dot_config/fish/conf.d/wezterm-resurrect.fish`** triggers an extra
-  checkpoint on every `cd`, for saves fresher than the periodic timer alone;
-  also stamps the pane's real cwd and persists custom env vars (see below
-  for both). Guarded on `status is-interactive` and `set -q WEZTERM_PANE`,
-  so it's a complete no-op in any shell that isn't an interactive WezTerm
-  pane — safe to drop into any fish config via `conf.d`, which fish
-  auto-sources without you editing `config.fish` or any existing function.
+  checkpoint on every `cd`, for saves fresher than the periodic timer
+  alone; also stamps the pane's real cwd, reloads custom env vars and the
+  last title on startup, and persists custom env vars going forward (see
+  below for all three). Guarded on `status is-interactive` and `set -q
+  WEZTERM_PANE`, so it's a complete no-op in any shell that isn't an
+  interactive WezTerm pane — safe to drop into any fish config via
+  `conf.d`, which fish auto-sources without you editing `config.fish` or
+  any existing function. This repo never touches `config.fish` itself —
+  see "cwd restore for alt-screen apps, and tab titles" below for the one
+  thing (titles) that needs a one-line opt-in from you instead.
+- **`dot_config/fish/functions/wezterm_resurrect_notify_title.fish`** and
+  **`dot_config/fish/functions/__wezterm_resurrect_load_env.fish`** —
+  supporting pieces for the above, plain callable functions rather than
+  anything that redefines `fish_title` or collides with a generic
+  dotenv-loader a separate fish config might ship under a name like
+  `exportenv`.
 
 ## Isolated per-pane fish history
 
@@ -90,35 +100,60 @@ Code's TUI is the one that surfaced it) restored to a default directory
 instead of wherever they actually started, and tab titles came back
 blank regardless of what was shown before.
 
-Fish always knows its own `$PWD` and whatever `fish_title` currently
-computes, foreground app or not, so both get tracked the same way as the
-history id: stamped continuously as wezterm user vars (cwd on every `cd`
-plus once at shell start, title on every prompt), read back by
-`on_pane_capture`, and injected into the respawned shell's environment by
-`spawn_pane` — which a corresponding bit in `fish-chezmoi`'s `config.fish`
-picks up before the first prompt renders, so the restored title doesn't
-get blanked back to the default a moment later.
+Fish always knows its own `$PWD` regardless of what's running in the
+foreground, so cwd is tracked the same way as the history id: stamped
+continuously as a wezterm user var (on every `cd`, plus once at shell
+start), read back by `on_pane_capture`, and injected into the respawned
+shell's environment by `spawn_pane`.
+
+Titles work the same way, but deliberately **don't** redefine
+`fish_title` for you — function definitions in fish don't coexist the way
+hooks do, so a repo that silently overrides `fish_title` would clobber
+whatever you've already customized it to do (this one originally lived in
+`fish-chezmoi`'s `config.fish` for exactly that reason, until making this
+repo public made the dependency the wrong way around). Instead,
+`functions/wezterm_resurrect_notify_title.fish` is a plain function you
+opt into calling from your own `fish_title`, however it's defined:
+
+```fish
+function fish_title
+    set -l title ...  # however you already compute it
+    type -q wezterm_resurrect_notify_title; and wezterm_resurrect_notify_title $title
+    echo $title
+end
+```
+
+Complete no-op if you never call it (no title tracking, same as before
+this feature existed) and a complete no-op outside a wezterm pane even if
+you do. `conf.d/wezterm-resurrect.fish` picks the stamped value back up
+on restore and adopts it into `$__TERMTITLE` before the first prompt
+renders, so whatever your own `fish_title` checks for a custom title
+(the convention above assumes a `$__TERMTITLE`-style variable, same as
+`fish-chezmoi`'s) sees it immediately rather than one render late.
 
 ## Custom env vars
 
 A pane's own `set -x`'d env vars (not the whole environment — see below
 for what's excluded and why) survive a restore the same way history/cwd/
-title do. `conf.d/wezterm-resurrect.fish` diffs the current environment
-against a baseline captured once at this session's own startup (in
-`fish-chezmoi`'s `config.fish`, right after ssh-agent and everything else
-conf.d sets up — so none of that counts as "custom"), on every prompt,
-and writes whatever's left over to a per-pane file
-(`~/.local/state/wezterm-resurrect/env/<history_id>.env`, exportenv's own
-format) keyed by the same history id used for per-pane history. A short
-excludelist (`PWD`, `OLDPWD`, `SHLVL`, etc.) catches vars that naturally
-change during normal use regardless of baseline.
+title do, with no fish_title-style integration needed — this one's purely
+hooks, so it works automatically the moment this repo is installed.
+`conf.d/wezterm-resurrect.fish` diffs the current environment against a
+baseline captured once at this session's own startup (right after
+ssh-agent and everything else conf.d sets up, so none of that counts as
+"custom"), on every prompt, and writes whatever's left over to a per-pane
+file (`~/.local/state/wezterm-resurrect/env/<history_id>.env`) keyed by
+the same history id used for per-pane history. A short excludelist
+(`PWD`, `OLDPWD`, `SHLVL`, etc.) catches vars that naturally change during
+normal use regardless of baseline.
 
 This file lives independently of the JSON session snapshot — a restored
-pane's `config.fish` reloads it via `exportenv` directly from disk before
-taking its own baseline, so only genuinely new exports made after that
-count toward the next save. Cleaned up the same way as history: on normal
-pane close (`fish_exit`), and by the periodic/post-reboot sweep for panes
-that didn't exit cleanly.
+pane reloads it (via the internal `__wezterm_resurrect_load_env` helper,
+deliberately not named or shaped like a generic dotenv-loader a separate
+fish config might also ship, to avoid two different tools claiming the
+same target path) directly from disk before taking its own baseline, so
+only genuinely new exports made after that count toward the next save.
+Cleaned up the same way as history: on normal pane close (`fish_exit`),
+and by the periodic/post-reboot sweep for panes that didn't exit cleanly.
 
 Verified end to end: captured a custom export in one simulated pane,
 confirmed the written file contained only that var (not `PWD`,

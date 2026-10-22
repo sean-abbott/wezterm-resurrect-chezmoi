@@ -23,15 +23,39 @@ if status is-interactive; and set -q WEZTERM_PANE
     printf '\033]1337;SetUserVar=%s=%s\007' WEZTERM_RESURRECT_CWD (printf '%s' "$PWD" | base64 -w0)
 end
 
-# Persists this pane's own custom-exported env vars to a per-pane file
-# (exportenv-compatible: config.fish in fish-chezmoi reloads it before a
-# restored pane takes its own baseline), so manually `set -x`'d vars
-# survive a restore the same way history/cwd/title do. Only vars that
-# differ from this session's own startup baseline count -- see
-# config.fish for where that baseline gets captured, right after ssh-agent
-# and everything else conf.d sets up, so none of that counts as "custom".
-# A short excludelist on top catches vars that naturally change during
-# normal use regardless of baseline (cwd navigation, prompt bookkeeping).
+# Runs once at shell startup, before the first prompt: reloads this
+# pane's own custom env vars (if restored, via the internal
+# __wezterm_resurrect_load_env helper -- deliberately not named
+# "exportenv" so a separate, generically-named utility of that name in
+# another fish config can't collide with this file's own target path),
+# adopts whatever title the old pane had into $__TERMTITLE, then takes
+# this session's own baseline snapshot of its environment for the
+# env-diffing below. Plain imperative statements, not function
+# definitions, so this is safe to run from conf.d regardless of whether
+# -- or how -- anything else defines fish_title; see
+# wezterm_resurrect_notify_title.fish for the actual title integration
+# point, which is a function call you opt into from your own fish_title,
+# not something this repo redefines for you.
+if status is-interactive; and set -q WEZTERM_PANE
+    if set -q WEZTERM_RESURRECT_HISTORY_ID
+        set -l env_file "$HOME/.local/state/wezterm-resurrect/env/$WEZTERM_RESURRECT_HISTORY_ID.env"
+        if test -f "$env_file"
+            __wezterm_resurrect_load_env "$env_file"
+        end
+    end
+    if set -q WEZTERM_RESURRECT_TITLE
+        set -g __TERMTITLE $WEZTERM_RESURRECT_TITLE
+    end
+    set -g __wezterm_resurrect_env_baseline (env | sort)
+end
+
+# Persists this pane's own custom-exported env vars to a per-pane file, so
+# manually `set -x`'d vars survive a restore the same way history/cwd/
+# title do. Only vars that differ from the startup baseline above count
+# as "custom" -- that baseline is captured right after ssh-agent and
+# everything else conf.d sets up, so none of that counts. A short
+# excludelist on top catches vars that naturally change during normal use
+# regardless of baseline (cwd navigation, prompt bookkeeping).
 if status is-interactive; and set -q WEZTERM_PANE
     function __wezterm_resurrect_save_env --on-event fish_prompt --description 'Persist this pane''s custom-exported env vars for wezterm-resurrect'
         set -q WEZTERM_RESURRECT_HISTORY_ID; or return
