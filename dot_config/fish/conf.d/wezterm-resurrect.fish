@@ -2,9 +2,9 @@
 # saves than its periodic timer alone. Also continuously stamps the pane's
 # real cwd as a user var -- WezTerm's own process-based cwd detection
 # (what the library's capture normally relies on) comes back empty for
-# panes running an alt-screen foreground app (e.g. Claude Code's TUI), so
-# a pane that's just running `claude` would otherwise restore to a default
-# directory instead of wherever it was actually started. Fish always
+# panes running an alt-screen foreground app (e.g. a TUI), so such a pane
+# would otherwise restore to a default directory instead of wherever it was
+# actually started. Fish always
 # knows its own $PWD regardless of what's running in the foreground, so
 # conf/resurrect.lua's on_pane_capture/spawn_pane prefer this over the
 # library's own (possibly empty) captured cwd.
@@ -18,7 +18,7 @@ if status is-interactive; and set -q WEZTERM_PANE
         printf '\033]1337;SetUserVar=%s=%s\007' WEZTERM_RESURRECT_CWD (printf '%s' "$PWD" | base64 -w0)
     end
     # --on-variable only fires on future changes, not the initial value --
-    # a pane that never cd's again (e.g. launches straight into claude)
+    # a pane that never cd's again (e.g. launches straight into a TUI)
     # still needs its starting cwd stamped once up front.
     printf '\033]1337;SetUserVar=%s=%s\007' WEZTERM_RESURRECT_CWD (printf '%s' "$PWD" | base64 -w0)
 end

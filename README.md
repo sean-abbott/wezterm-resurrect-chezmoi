@@ -95,8 +95,8 @@ Two related gaps, both from the same root cause: WezTerm's own capture
 relies on process introspection to get a pane's cwd, and its own
 `tab:get_title()` only reflects a title explicitly set through its Lua
 API — neither sees anything the shell itself displays via OSC sequences.
-In practice this meant panes running an alt-screen foreground app (Claude
-Code's TUI is the one that surfaced it) restored to a default directory
+In practice this meant panes running an alt-screen foreground app (a TUI)
+restored to a default directory
 instead of wherever they actually started, and tab titles came back
 blank regardless of what was shown before.
 
@@ -130,6 +130,14 @@ on restore and adopts it into `$__TERMTITLE` before the first prompt
 renders, so whatever your own `fish_title` checks for a custom title
 (the convention above assumes a `$__TERMTITLE`-style variable, same as
 `fish-chezmoi`'s) sees it immediately rather than one render late.
+
+## Titles set by other programs
+
+At capture, a pane's title is its `WEZTERM_RESURRECT_TITLE` user var if
+set, otherwise `pane:get_title()`. Anything that can emit
+`OSC 1337 ; SetUserVar=WEZTERM_RESURRECT_TITLE=<base64 title>` to the
+pane (the fish function above does) controls what a restored pane
+comes back with.
 
 ## Custom env vars
 

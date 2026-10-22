@@ -18,15 +18,39 @@ local history_sweep_script = wezterm.home_dir .. "/.local/bin/wezterm-resurrect-
 local SAVE_INTERVAL_SECONDS = 120
 local CWD_SAVE_USER_VAR = "WEZTERM_RESURRECT_SAVE"
 local HISTORY_ID_USER_VAR = "WEZTERM_RESURRECT_HISTORY_ID"
+local CWD_USER_VAR = "WEZTERM_RESURRECT_CWD"
+local TITLE_USER_VAR = "WEZTERM_RESURRECT_TITLE"
+
+local function is_local_dir(path)
+	local f = path and io.open(path .. "/.", "r")
+	if f then
+		f:close()
+		return true
+	end
+	return false
+end
 
 -- Carries each pane's isolated-history id (stamped by
 -- conf.d/wezterm-resurrect-history.fish as a wezterm user var) through the
 -- capture/restore round trip, so a restored pane's shell inherits the same
 -- id and reconnects to the same history file instead of starting a new one.
+-- The same round trip carries the shell-reported cwd and the pane title:
+-- the library's own cwd comes back empty for alt-screen foreground apps,
+-- and an app-set title (OSC 0/2) is only visible through pane:get_title().
 local function on_pane_capture(pane, leaf)
 	local user_vars = pane:get_user_vars()
 	if user_vars and user_vars[HISTORY_ID_USER_VAR] then
 		leaf.history_id = user_vars[HISTORY_ID_USER_VAR]
+	end
+	if user_vars and user_vars[CWD_USER_VAR] and user_vars[CWD_USER_VAR] ~= "" then
+		leaf.saved_cwd = user_vars[CWD_USER_VAR]
+	end
+	local title = user_vars and user_vars[TITLE_USER_VAR]
+	if not title or title == "" then
+		title = pane:get_title()
+	end
+	if title and title ~= "" then
+		leaf.saved_title = title
 	end
 end
 
@@ -35,6 +59,13 @@ local function spawn_pane(leaf, opts)
 	if leaf.history_id then
 		cmd.set_environment_variables = cmd.set_environment_variables or {}
 		cmd.set_environment_variables[HISTORY_ID_USER_VAR] = leaf.history_id
+	end
+	if leaf.saved_title then
+		cmd.set_environment_variables = cmd.set_environment_variables or {}
+		cmd.set_environment_variables[TITLE_USER_VAR] = leaf.saved_title
+	end
+	if leaf.saved_cwd and is_local_dir(leaf.saved_cwd) then
+		cmd.cwd = leaf.saved_cwd
 	end
 	return cmd, notice
 end
