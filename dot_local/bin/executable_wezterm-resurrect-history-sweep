@@ -5,7 +5,18 @@
 # pid) is correct in both cases: while wezterm is still running it only
 # catches genuinely-dead shells, and right after a reboot every recorded pid
 # is necessarily from before this boot, so every lock is orphaned.
+#
+# `--keep id1,id2,...` skips panes with those history ids. gui-startup passes
+# the ids from the snapshot it is about to restore: their shells have not
+# started yet, so their locks look orphaned, but their history and env files
+# are what the restored shells will pick up. Panes that never start are swept
+# by the next periodic run, which passes no keep list.
 set -eu
+
+keep=""
+if [ "${1:-}" = "--keep" ]; then
+  keep="${2:-}"
+fi
 
 lock_dir="$HOME/.local/state/wezterm-resurrect/history-locks"
 fish_data_dir="$HOME/.local/share/fish"
@@ -23,6 +34,10 @@ for lock_file in "$lock_dir"/*.pid; do
   if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
     continue
   fi
+
+  case ",$keep," in
+    *",${key#wezterm_},"*) continue ;;
+  esac
 
   history_file="$fish_data_dir/${key}_history"
   if [ -f "$history_file" ]; then

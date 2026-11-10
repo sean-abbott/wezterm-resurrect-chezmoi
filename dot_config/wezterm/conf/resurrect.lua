@@ -15,6 +15,7 @@ local resurrect = wezterm.plugin.require("https://github.com/TheCookieLab/resurr
 
 local state_dir = wezterm.home_dir .. "/.local/state/wezterm-resurrect"
 local history_sweep_script = wezterm.home_dir .. "/.local/bin/wezterm-resurrect-history-sweep"
+local keep_snapshot_script = wezterm.home_dir .. "/.local/bin/wezterm-resurrect-keep-snapshot"
 local SAVE_INTERVAL_SECONDS = 120
 local CWD_SAVE_USER_VAR = "WEZTERM_RESURRECT_SAVE"
 local HISTORY_ID_USER_VAR = "WEZTERM_RESURRECT_HISTORY_ID"
@@ -112,8 +113,28 @@ return function(config)
 	end
 	manager.set_max_nlines(3500)
 
-	local function sweep_history()
-		wezterm.background_child_process({ history_sweep_script })
+	local function sweep_history(keep_ids)
+		local cmd = { history_sweep_script }
+		if keep_ids and #keep_ids > 0 then
+			table.insert(cmd, "--keep")
+			table.insert(cmd, table.concat(keep_ids, ","))
+		end
+		wezterm.background_child_process(cmd)
+	end
+
+	local function collect_history_ids(node, out)
+		if type(node) ~= "table" then
+			return out
+		end
+		if type(node.history_id) == "string" and node.history_id:match("^%w+$") then
+			out[#out + 1] = node.history_id
+		end
+		for _, child in pairs(node) do
+			if type(child) == "table" then
+				collect_history_ids(child, out)
+			end
+		end
+		return out
 	end
 
 	local function checkpoint()
@@ -140,7 +161,12 @@ return function(config)
 	end)
 
 	wezterm.on("gui-startup", function(_cmd)
+		-- Copy the snapshot we are about to restore from before anything can
+		-- write a newer one; the library keeps only its latest three.
+		wezterm.run_child_process({ keep_snapshot_script })
+
 		local state, warn_or_err = manager.load_session()
+		local restoring_ids = state and collect_history_ids(state, {}) or {}
 		if state then
 			local _, restore_err = resurrect.session_state.restore(state, { spawn_pane = spawn_pane, on_pane_restore = on_pane_restore })
 			if restore_err then
@@ -152,8 +178,10 @@ return function(config)
 
 		-- Every per-pane history lock from before this boot is necessarily
 		-- orphaned (its pid can't still be running) -- sweep once up front
-		-- rather than waiting for the first periodic tick.
-		sweep_history()
+		-- rather than waiting for the first periodic tick. Panes being
+		-- restored right now are kept: their shells have not claimed their
+		-- ids yet, and the sweep would otherwise merge away their history.
+		sweep_history(restoring_ids)
 
 		-- The library has no shutdown/SIGTERM hook, so a hard reboot never
 		-- catches a clean final save -- this bounds how stale the restored

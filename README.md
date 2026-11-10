@@ -279,6 +279,15 @@ That's it — never needs to change again. All future updates to the
 persistence logic itself land via `chezmoi apply` re-rendering
 `conf/resurrect.lua`, not by touching `wezterm.lua` again.
 
+## Kept snapshots
+
+The library keeps only its newest three snapshots and rewrites them every
+checkpoint, so the snapshot a restore came from is overwritten within minutes.
+At startup, before restoring, `wezterm-resurrect-keep-snapshot` copies the
+newest snapshot to `~/.local/state/wezterm-resurrect/restored/<UTC time>.json`
+and keeps the last three such copies. Use them to see what a restore was given
+when it did not come back as expected.
+
 ## Manual save / restore
 
 - `Alt+Shift+S` — save right now.

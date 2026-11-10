@@ -7,6 +7,7 @@ systemctl --user disable --now wezterm-resurrect-final-save.service 2>/dev/null 
 rm -f "$HOME/.config/systemd/user/wezterm-resurrect-final-save.service"
 rm -f "$HOME/.local/bin/wezterm-resurrect-final-save"
 rm -f "$HOME/.local/bin/wezterm-resurrect-history-sweep"
+rm -f "$HOME/.local/bin/wezterm-resurrect-keep-snapshot"
 rm -f "$HOME/.config/wezterm/conf/resurrect.lua"
 rm -f "$HOME/.config/fish/conf.d/wezterm-resurrect.fish"
 rm -f "$HOME/.config/fish/conf.d/wezterm-resurrect-history.fish"

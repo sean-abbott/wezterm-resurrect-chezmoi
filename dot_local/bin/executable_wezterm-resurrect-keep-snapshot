@@ -1,0 +1,21 @@
+#!/bin/sh
+# Copies the newest session snapshot to ~/.local/state/wezterm-resurrect/restored/
+# before gui-startup restores from it. The library keeps only its newest three
+# snapshots and rewrites them every checkpoint, so without this copy the
+# snapshot a restore came from is gone minutes later and cannot be inspected.
+# Keeps the last three restores.
+set -eu
+
+state_dir="$HOME/.local/state/wezterm-resurrect"
+keep_dir="$state_dir/restored"
+
+newest=$(ls -t "$state_dir"/session/snapshot-*.json 2>/dev/null | head -1 || true)
+[ -n "$newest" ] || exit 0
+
+mkdir -p -m 700 "$keep_dir"
+cp "$newest" "$keep_dir/$(date -u +%Y%m%dT%H%M%SZ).json"
+
+# shellcheck disable=SC2012
+ls -t "$keep_dir"/*.json 2>/dev/null | tail -n +4 | while read -r old; do
+  rm -f "$old"
+done

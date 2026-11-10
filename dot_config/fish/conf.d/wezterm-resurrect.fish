@@ -43,7 +43,11 @@ if status is-interactive; and set -q WEZTERM_PANE
             __wezterm_resurrect_load_env "$env_file"
         end
     end
-    if set -q WEZTERM_RESURRECT_TITLE
+    # The saved title is whatever fish_title last showed, so for a pane
+    # nobody renamed it is just the default path title. Adopting that would
+    # pin it and stop it following later `cd`s; only adopt a title that
+    # differs from what this directory would show anyway.
+    if set -q WEZTERM_RESURRECT_TITLE; and test "$WEZTERM_RESURRECT_TITLE" != (prompt_pwd)
         set -g __TERMTITLE $WEZTERM_RESURRECT_TITLE
     end
     set -g __wezterm_resurrect_env_baseline (env | sort)
